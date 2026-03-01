@@ -1,0 +1,282 @@
+---
+import Layout from "../../layouts/Layout.astro";
+
+// If already logged in, redirect to dashboard
+if (Astro.cookies.has("admin_token")) {
+    return Astro.redirect("/admin/dashboard");
+}
+---
+
+<Layout title="Admin Login - Validasi Server">
+    <main class="login-container">
+        <div class="glass-card login-card fade-in">
+            <div class="brand">
+                <div class="logo-icon">
+                    <i class="bi bi-shield-check"></i>
+                </div>
+                <h1>Portal Admin</h1>
+                <p>Masuk untuk mengelola kunci akses dan tautan server</p>
+            </div>
+
+            <form id="loginForm" class="login-form">
+                <div class="form-group">
+                    <label for="username">Nama Pengguna</label>
+                    <div class="input-wrapper">
+                        <i class="bi bi-person input-icon"></i>
+                        <input
+                            type="text"
+                            id="username"
+                            name="username"
+                            placeholder="Masukkan nama pengguna"
+                            required
+                            autocomplete="username"
+                        />
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="password">Kata Sandi</label>
+                    <div class="input-wrapper">
+                        <i class="bi bi-key input-icon"></i>
+                        <input
+                            type="password"
+                            id="password"
+                            name="password"
+                            placeholder="Masukkan kata sandi"
+                            required
+                            autocomplete="current-password"
+                        />
+                    </div>
+                </div>
+
+                <div id="errorMessage" class="error-message"></div>
+
+                <button type="submit" class="btn-primary-elegant" id="loginBtn">
+                    <span class="btn-text">Masuk Sekarang</span>
+                    <div class="spinner d-none" id="loginSpinner"></div>
+                </button>
+            </form>
+        </div>
+    </main>
+</Layout>
+
+<script>
+    const form = document.getElementById("loginForm") as HTMLFormElement;
+    const errorMessage = document.getElementById(
+        "errorMessage",
+    ) as HTMLDivElement;
+    const loginBtn = document.getElementById("loginBtn") as HTMLButtonElement;
+    const btnText = loginBtn.querySelector(".btn-text") as HTMLSpanElement;
+    const spinner = document.getElementById("loginSpinner") as HTMLDivElement;
+
+    form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData);
+
+        // Reset state
+        errorMessage.style.display = "none";
+        errorMessage.textContent = "";
+        loginBtn.disabled = true;
+        btnText.classList.add("d-none");
+        spinner.classList.remove("d-none");
+
+        try {
+            const res = await fetch("/api/auth/login", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+            });
+
+            const result = await res.json();
+
+            if (!res.ok) {
+                throw new Error(
+                    result.error || "Gagal masuk. Periksa kembali data Anda.",
+                );
+            }
+
+            // Redirect ke dashboard
+            window.location.href = "/admin/dashboard";
+        } catch (error: any) {
+            errorMessage.textContent = error.message;
+            errorMessage.style.display = "block";
+
+            // Reset button state
+            loginBtn.disabled = false;
+            btnText.classList.remove("d-none");
+            spinner.classList.add("d-none");
+        }
+    });
+</script>
+
+<style>
+    .login-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        padding: 24px;
+        z-index: 1;
+        position: relative;
+    }
+
+    .login-card {
+        width: 100%;
+        max-width: 420px;
+        padding: 48px 36px;
+        display: flex;
+        flex-direction: column;
+        gap: 32px;
+    }
+
+    .fade-in {
+        animation: fadeIn 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .brand {
+        text-align: center;
+    }
+
+    .logo-icon {
+        font-size: 3.5rem;
+        color: var(--primary);
+        margin-bottom: 12px;
+    }
+
+    h1 {
+        font-size: 1.6rem;
+        font-weight: 700;
+        margin-bottom: 8px;
+        color: var(--text-main);
+        letter-spacing: -0.5px;
+    }
+
+    p {
+        color: var(--text-muted);
+        font-size: 0.95rem;
+        line-height: 1.5;
+    }
+
+    .login-form {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+    }
+
+    .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    label {
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: var(--text-muted);
+    }
+
+    .input-wrapper {
+        position: relative;
+        display: flex;
+        align-items: center;
+    }
+
+    .input-icon {
+        position: absolute;
+        left: 16px;
+        color: var(--text-muted);
+        font-size: 1.1rem;
+    }
+
+    input {
+        width: 100%;
+        padding: 14px 16px 14px 44px;
+        border-radius: 12px;
+        border: 1px solid var(--card-border);
+        background: rgba(0, 0, 0, 0.2);
+        color: var(--text-main);
+        font-family: inherit;
+        font-size: 0.95rem;
+        transition: all 0.2s ease;
+    }
+
+    input:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.15);
+        background: rgba(0, 0, 0, 0.4);
+    }
+
+    .btn-primary-elegant {
+        margin-top: 12px;
+        padding: 14px;
+        border-radius: 12px;
+        border: none;
+        background: var(--primary);
+        color: white;
+        font-family: inherit;
+        font-weight: 600;
+        font-size: 1.05rem;
+        cursor: pointer;
+        position: relative;
+        overflow: hidden;
+        transition: all 0.2s ease;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 52px;
+    }
+
+    .btn-primary-elegant:not(:disabled):hover {
+        background: var(--primary-hover);
+        transform: translateY(-2px);
+    }
+
+    .btn-primary-elegant:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+    }
+
+    .error-message {
+        color: var(--danger);
+        background: rgba(251, 113, 133, 0.1);
+        border: 1px solid rgba(251, 113, 133, 0.2);
+        padding: 12px 16px;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        display: none;
+        text-align: center;
+    }
+
+    .d-none {
+        display: none !important;
+    }
+
+    .spinner {
+        width: 22px;
+        height: 22px;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        border-top-color: white;
+        animation: spin 1s ease-in-out infinite;
+    }
+
+    @keyframes spin {
+        to {
+            transform: rotate(360deg);
+        }
+    }
+</style>

@@ -1,0 +1,1317 @@
+---
+import Layout from "../../layouts/Layout.astro";
+import jwt from "jsonwebtoken";
+import { query } from "../../lib/db";
+
+// Protected Route Validation
+const token = Astro.cookies.get("admin_token")?.value;
+
+if (!token) {
+    return Astro.redirect("/admin/login");
+}
+
+try {
+    const secret =
+        import.meta.env.JWT_SECRET ||
+        process.env.JWT_SECRET ||
+        "default-secret";
+    jwt.verify(token, secret);
+} catch (error) {
+    Astro.cookies.delete("admin_token", { path: "/" });
+    return Astro.redirect("/admin/login");
+}
+
+// Fetch Initial Data
+let keys = [];
+let redirectLinks = [];
+const tzOffset = 7 * 60 * 60 * 1000; // GMT+7 for display purposes
+
+try {
+    const keysResult = await query(
+        "SELECT * FROM keys ORDER BY created_at DESC",
+    );
+    keys = keysResult.rows.map((k) => ({
+        ...k,
+        created_at_local: new Date(
+            new Date(k.created_at).getTime() + tzOffset,
+        ).toISOString(),
+        expires_at_local: new Date(
+            new Date(k.expires_at).getTime() + tzOffset,
+        ).toISOString(),
+    }));
+
+    const linksResult = await query(
+        "SELECT * FROM redirect_links ORDER BY id ASC",
+    );
+    redirectLinks = linksResult.rows;
+} catch (e) {
+    console.error(e);
+}
+---
+
+<Layout title="Dasbor - Portal Admin">
+    <div class="dashboard-layout">
+        <aside class="sidebar glass-card">
+            <div class="brand">
+                <i class="bi bi-shield-check text-primary"></i>
+                <span>Portal Admin</span>
+            </div>
+
+            <nav class="nav-menu">
+                <button class="nav-item active" data-target="keys-section">
+                    <i class="bi bi-key"></i> Kelola Kunci Akses
+                </button>
+                <button class="nav-item" data-target="links-section">
+                    <i class="bi bi-link"></i> Pengaturan Tautan
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button id="logoutBtn" class="btn-outline-danger">
+                    <i class="bi bi-box-arrow-right"></i> Keluar
+                </button>
+            </div>
+        </aside>
+
+        <main class="main-content fade-in">
+            <header class="topbar glass-card mb-4">
+                <h2>Dasbor Manajemen</h2>
+                <div class="user-info">
+                    <div class="avatar"><i class="bi bi-person"></i></div>
+                    <span>Administrator</span>
+                </div>
+            </header>
+
+            <!-- Section: Keys Management -->
+            <section id="keys-section" class="content-section active">
+                <div class="section-header">
+                    <div>
+                        <h3>Kunci Akses</h3>
+                        <p class="text-muted">
+                            Kelola kunci akses pengguna (Masa aktif: 3 hari)
+                        </p>
+                    </div>
+                    <button id="generateKeysBtn" class="btn-primary-elegant">
+                        <i class="bi bi-plus-circle me-2"></i> Buat 10 Kunci
+                    </button>
+                </div>
+
+                <div class="glass-card table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Username</th>
+                                <th>Password</th>
+                                <th>Dibuat (WIB)</th>
+                                <th>Berlaku Sampai (WIB)</th>
+                                <th>Status</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody id="keysTableBody">
+                            {
+                                keys.map((key) => {
+                                    const isExpired =
+                                        new Date(key.expires_at) < new Date();
+                                    return (
+                                        <tr data-id={key.id}>
+                                            <td class="font-mono text-accent">
+                                                {key.username}
+                                            </td>
+                                            <td class="font-mono text-accent">
+                                                {key.password}
+                                            </td>
+                                            <td class="text-muted">
+                                                {key.created_at_local
+                                                    .replace("T", " ")
+                                                    .substring(0, 16)}
+                                            </td>
+                                            <td
+                                                class={
+                                                    isExpired
+                                                        ? "text-danger"
+                                                        : "text-muted"
+                                                }
+                                            >
+                                                {key.expires_at_local
+                                                    .replace("T", " ")
+                                                    .substring(0, 16)}
+                                            </td>
+                                            <td>
+                                                {isExpired ? (
+                                                    <span class="badge badge-danger">
+                                                        Kedaluwarsa
+                                                    </span>
+                                                ) : key.is_active ? (
+                                                    <span class="badge badge-success">
+                                                        Aktif
+                                                    </span>
+                                                ) : (
+                                                    <span class="badge badge-warning">
+                                                        Nonaktif
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td>
+                                                <div class="actions-group">
+                                                    <button
+                                                        class="btn-icon btn-copy text-primary"
+                                                        data-user={key.username}
+                                                        data-pass={key.password}
+                                                        title="Salin Kredensial"
+                                                    >
+                                                        <i class="bi bi-clipboard" />
+                                                    </button>
+                                                    <button
+                                                        class="btn-icon text-danger btn-delete-key"
+                                                        data-id={key.id}
+                                                        title="Hapus Kunci"
+                                                    >
+                                                        <i class="bi bi-trash" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            }
+
+                            {
+                                keys.length === 0 && (
+                                    <tr>
+                                        <td
+                                            colspan="6"
+                                            class="text-center py-5 text-muted"
+                                        >
+                                            <div class="empty-state">
+                                                <i class="bi bi-inbox text-2xl mb-2 d-block" />
+                                                Belum ada kunci. Klik tombol
+                                                Buat 10 Kunci untuk memulai.
+                                            </div>
+                                        </td>
+                                    </tr>
+                                )
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Section: Redirect Links (Bicolink config) -->
+            <section id="links-section" class="content-section">
+                <div class="section-header">
+                    <div>
+                        <h3>Pengaturan Tautan Pintas (Shortlink)</h3>
+                        <p class="text-muted">
+                            Konfigurasi tujuan tautan untuk setiap tombol server
+                            (menggunakan Bicolink)
+                        </p>
+                    </div>
+                    <button
+                        id="addServerBtn"
+                        class="btn-primary-elegant"
+                        data-bs-toggle="modal"
+                        data-bs-target="#linkModal"
+                    >
+                        <i class="bi bi-plus-circle me-2"></i> Tambah Server
+                    </button>
+                </div>
+
+                <div class="grid-container">
+                    {
+                        redirectLinks.map((link) => (
+                            <div class="server-card glass-card">
+                                <div class="server-header">
+                                    <div class="server-title">
+                                        <h4>{link.label}</h4>
+                                        <code>{link.server_name}</code>
+                                    </div>
+                                    <div class="server-actions">
+                                        <label
+                                            class="switch"
+                                            title="Aktifkan/Nonaktifkan Server"
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                class="toggle-link-status"
+                                                data-id={link.id}
+                                                checked={link.is_active}
+                                            />
+                                            <span class="slider round" />
+                                        </label>
+                                        <button
+                                            class="btn-icon btn-edit-link"
+                                            data-link={JSON.stringify(link)}
+                                            title="Edit Tautan"
+                                        >
+                                            <i class="bi bi-pencil" />
+                                        </button>
+                                        <button
+                                            class="btn-icon text-danger btn-delete-link"
+                                            data-id={link.id}
+                                            title="Hapus Tautan"
+                                        >
+                                            <i class="bi bi-trash" />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="server-body">
+                                    <div class="detail-row">
+                                        <span class="detail-label">
+                                            Tautan Bicolink:
+                                        </span>
+                                        <div class="url-badge border-accent">
+                                            <i class="bi bi-link" />{" "}
+                                            <span class="text-truncate">
+                                                {link.shortlink_url}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))
+                    }
+
+                    {
+                        redirectLinks.length === 0 && (
+                            <div class="empty-state w-100 text-center py-5 glass-card">
+                                <i class="bi bi-link-45deg text-muted text-2xl mb-2 d-block" />
+                                <p class="text-muted m-0">
+                                    Belum ada tautan yang dikonfigurasi. Klik
+                                    Tambah Server untuk mengatur tautan
+                                    Bicolink.
+                                </p>
+                            </div>
+                        )
+                    }
+                </div>
+            </section>
+        </main>
+
+        <!-- Modal Form (Hidden by default, simulated with standard html logic) -->
+        <div id="linkModal" class="modal-overlay d-none">
+            <div class="modal-content glass-card fade-in">
+                <div class="modal-header border-bottom">
+                    <h3 id="modalTitle">Tambah Tautan Server</h3>
+                    <button class="btn-icon close-modal"
+                        ><i class="bi bi-x-lg"></i></button
+                    >
+                </div>
+
+                <form id="linkForm" class="modal-body">
+                    <input type="hidden" id="linkId" name="id" />
+
+                    <div class="form-group mb-4">
+                        <label for="serverName"
+                            >Nama Internal Server (Unik)</label
+                        >
+                        <input
+                            type="text"
+                            id="serverName"
+                            name="server_name"
+                            class="form-control"
+                            placeholder="Contoh: server1"
+                            required
+                        />
+                    </div>
+
+                    <div class="form-group mb-4">
+                        <label for="label">Label Tampilan</label>
+                        <input
+                            type="text"
+                            id="label"
+                            name="label"
+                            class="form-control"
+                            placeholder="Contoh: Server Cepat 1"
+                            required
+                        />
+                    </div>
+
+                    <div class="instruction-box mb-4">
+                        <h5>
+                            <i class="bi bi-lightbulb text-accent me-1"></i> Panduan
+                            Bicolink:
+                        </h5>
+                        <ol>
+                            <li>
+                                Salin tautan tujuan berikut ini: <br />
+                                <code
+                                    class="target-url-copy mt-2"
+                                    id="targetUrlCopy"
+                                    >https://domainkamu.com/key</code
+                                >
+                            </li>
+                            <li>
+                                Buka dasbor <strong>Bicolink</strong> Anda, dan gunakan
+                                tautan di atas untuk membuat Shortlink baru.
+                            </li>
+                            <li>
+                                Salin <strong>Shortlink Bicolink</strong> yang dihasilkan,
+                                dan tempelkan pada kolom di bawah ini.
+                            </li>
+                        </ol>
+                    </div>
+
+                    <div class="form-group mb-4">
+                        <label for="shortlinkUrl"
+                            >Tautan Shortlink (Bicolink)</label
+                        >
+                        <input
+                            type="url"
+                            id="shortlinkUrl"
+                            name="shortlink_url"
+                            class="form-control"
+                            placeholder="https://bicolink.net/ref/..."
+                            required
+                        />
+                        <small class="text-muted mt-2 d-block"
+                            >Tujuan akhir tempat pengguna akan diarahkan.</small
+                        >
+                    </div>
+
+                    <div class="form-group mb-5">
+                        <label for="callbackUrl"
+                            >Tautan Callback (Opsional)</label
+                        >
+                        <input
+                            type="text"
+                            id="callbackUrl"
+                            name="callback_url"
+                            class="form-control"
+                            placeholder="https://domainanda.com/key"
+                        />
+                    </div>
+
+                    <div class="modal-footer pt-3 border-top">
+                        <button
+                            type="button"
+                            class="btn-secondary-elegant close-modal"
+                            >Batal</button
+                        >
+                        <button type="submit" class="btn-primary-elegant"
+                            >Simpan Perubahan</button
+                        >
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</Layout>
+
+<style>
+    /* Layout Variables */
+    .dashboard-layout {
+        display: flex;
+        min-height: 100vh;
+        z-index: 1;
+        position: relative;
+    }
+
+    /* Sidebar */
+    .sidebar {
+        width: 280px;
+        padding: 32px 24px;
+        display: flex;
+        flex-direction: column;
+        border-radius: 0;
+        border-top: none;
+        border-bottom: none;
+        border-left: none;
+        z-index: 10;
+        background: rgba(15, 23, 42, 0.4);
+    }
+
+    .brand {
+        font-size: 1.3rem;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 48px;
+        color: var(--text-main);
+        letter-spacing: -0.5px;
+    }
+
+    .text-primary {
+        color: var(--primary);
+        font-size: 1.6rem;
+    }
+
+    .nav-menu {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        flex: 1;
+    }
+
+    .nav-item {
+        background: transparent;
+        border: 1px solid transparent;
+        color: var(--text-muted);
+        padding: 14px 18px;
+        border-radius: 12px;
+        text-align: left;
+        font-size: 0.95rem;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        cursor: pointer;
+        transition: all 0.25s ease;
+    }
+
+    .nav-item i {
+        font-size: 1.1rem;
+    }
+
+    .nav-item:hover {
+        background: rgba(255, 255, 255, 0.03);
+        color: var(--text-main);
+    }
+
+    .nav-item.active {
+        background: rgba(129, 140, 248, 0.1);
+        color: var(--primary);
+        border: 1px solid rgba(129, 140, 248, 0.25);
+    }
+
+    .sidebar-footer {
+        padding-top: 24px;
+        border-top: 1px solid var(--card-border);
+    }
+
+    /* Main Content */
+    .main-content {
+        flex: 1;
+        padding: 32px 48px;
+        overflow-y: auto;
+        height: 100vh;
+    }
+
+    .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 18px 28px;
+        margin-bottom: 40px;
+        border-radius: 16px;
+    }
+
+    .topbar h2 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin: 0;
+        color: var(--text-main);
+    }
+
+    .user-info {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        font-weight: 500;
+        color: var(--text-main);
+        font-size: 0.95rem;
+    }
+
+    .avatar {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        background: rgba(129, 140, 248, 0.15);
+        border: 1px solid rgba(129, 140, 248, 0.3);
+        color: var(--primary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.1rem;
+    }
+
+    /* Sections */
+    .content-section {
+        display: none;
+    }
+
+    .content-section.active {
+        display: block;
+        animation: fadeIn 0.5s ease;
+    }
+
+    .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        margin-bottom: 28px;
+    }
+
+    .section-header h3 {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 6px;
+        color: var(--text-main);
+    }
+
+    .section-header p {
+        margin: 0;
+        font-size: 0.95rem;
+    }
+
+    /* Table */
+    .table-container {
+        padding: 0;
+        overflow-x: auto;
+        border-radius: 16px;
+    }
+
+    .data-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .data-table th,
+    .data-table td {
+        padding: 18px 24px;
+        text-align: left;
+        border-bottom: 1px solid var(--card-border);
+        font-size: 0.95rem;
+    }
+
+    .data-table th {
+        font-weight: 600;
+        color: var(--text-muted);
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        background: rgba(15, 23, 42, 0.6);
+    }
+
+    .data-table tr:hover {
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .data-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .font-mono {
+        font-family: "Courier New", Courier, monospace;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+    }
+
+    /* Server Cards */
+    .grid-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+        gap: 24px;
+    }
+
+    .server-card {
+        padding: 24px;
+        transition:
+            transform 0.25s ease,
+            box-shadow 0.25s ease;
+    }
+
+    .server-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+        border-color: rgba(129, 140, 248, 0.3);
+    }
+
+    .server-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 20px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--card-border);
+    }
+
+    .server-title h4 {
+        font-size: 1.15rem;
+        font-weight: 600;
+        margin: 0 0 6px 0;
+        color: var(--text-main);
+    }
+
+    .server-title code {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        padding: 4px 8px;
+        border-radius: 6px;
+    }
+
+    .server-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .actions-group {
+        display: flex;
+        gap: 8px;
+    }
+
+    .detail-label {
+        display: block;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        margin-bottom: 8px;
+        font-weight: 500;
+    }
+
+    .url-badge {
+        background: rgba(0, 0, 0, 0.2);
+        padding: 10px 14px;
+        border-radius: 8px;
+        border: 1px solid var(--card-border);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-family: monospace;
+        font-size: 0.9rem;
+        color: var(--text-main);
+    }
+
+    .border-accent {
+        border-left: 3px solid var(--primary);
+    }
+
+    .text-truncate {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 250px;
+    }
+
+    /* Badges */
+    .badge {
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.5px;
+    }
+    .badge-success {
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--success);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+    .badge-danger {
+        background: rgba(244, 63, 94, 0.1);
+        color: var(--danger);
+        border: 1px solid rgba(244, 63, 94, 0.2);
+    }
+    .badge-warning {
+        background: rgba(245, 158, 11, 0.1);
+        color: var(--warning);
+        border: 1px solid rgba(245, 158, 11, 0.2);
+    }
+
+    .text-muted {
+        color: var(--text-muted);
+    }
+    .text-danger {
+        color: var(--danger);
+    }
+    .text-accent {
+        color: var(--accent);
+    }
+    .text-success {
+        color: var(--success);
+    }
+
+    /* Buttons */
+    .btn-primary-elegant {
+        background: var(--primary);
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: inline-flex;
+        align-items: center;
+    }
+
+    .btn-primary-elegant:hover {
+        background: var(--primary-hover);
+        transform: translateY(-2px);
+    }
+
+    .btn-secondary-elegant {
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--text-main);
+        border: 1px solid var(--card-border);
+        padding: 12px 20px;
+        border-radius: 10px;
+        font-weight: 500;
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .btn-secondary-elegant:hover {
+        background: rgba(255, 255, 255, 0.1);
+    }
+
+    .btn-outline-danger {
+        background: transparent;
+        border: 1px solid rgba(244, 63, 94, 0.3);
+        color: var(--danger);
+        padding: 12px 20px;
+        border-radius: 10px;
+        font-weight: 500;
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+
+    .btn-outline-danger:hover {
+        background: rgba(244, 63, 94, 0.1);
+    }
+
+    .btn-icon {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--card-border);
+        color: var(--text-muted);
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s;
+        font-size: 1rem;
+    }
+
+    .btn-icon:hover {
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--text-main);
+    }
+
+    .btn-icon.text-danger:hover {
+        color: var(--danger);
+        background: rgba(244, 63, 94, 0.1);
+        border-color: rgba(244, 63, 94, 0.2);
+    }
+
+    /* Modal */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(15, 23, 42, 0.8);
+        backdrop-filter: blur(8px);
+        z-index: 1000;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 24px;
+    }
+
+    .modal-content {
+        background: #111424; /* Solid color for modal to override glass transparency if needed */
+        width: 100%;
+        max-width: 520px;
+        border-radius: 16px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+        padding: 0;
+    }
+
+    .modal-header {
+        padding: 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .modal-header h3 {
+        margin: 0;
+        font-size: 1.35rem;
+        font-weight: 600;
+    }
+
+    .modal-body {
+        padding: 24px;
+    }
+
+    .modal-footer {
+        padding: 24px;
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+    }
+
+    .form-control {
+        width: 100%;
+        background: rgba(0, 0, 0, 0.2);
+        border: 1px solid var(--card-border);
+        color: var(--text-main);
+        padding: 14px 16px;
+        border-radius: 10px;
+        font-family: inherit;
+        font-size: 0.95rem;
+        transition: all 0.2s;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: var(--primary);
+        background: rgba(0, 0, 0, 0.4);
+        box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.15);
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 8px;
+        color: var(--text-muted);
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+
+    .instruction-box {
+        background: rgba(129, 140, 248, 0.05);
+        border: 1px solid rgba(129, 140, 248, 0.2);
+        border-radius: 12px;
+        padding: 16px 20px;
+        font-size: 0.9rem;
+        color: var(--text-muted);
+    }
+
+    .instruction-box h5 {
+        font-size: 0.95rem;
+        margin-bottom: 12px;
+        color: var(--text-main);
+        font-weight: 600;
+    }
+
+    .instruction-box ol {
+        margin: 0;
+        padding-left: 16px;
+    }
+
+    .instruction-box li {
+        margin-bottom: 8px;
+        line-height: 1.5;
+    }
+
+    .target-url-copy {
+        display: inline-block;
+        background: rgba(16, 185, 129, 0.1);
+        color: var(--success);
+        padding: 6px 12px;
+        border-radius: 6px;
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        word-break: break-all;
+    }
+
+    /* Toggle Switch */
+    .switch {
+        position: relative;
+        display: inline-block;
+        width: 44px;
+        height: 24px;
+    }
+    .switch input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+    .slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        transition: 0.4s;
+    }
+    .slider:before {
+        position: absolute;
+        content: "";
+        height: 16px;
+        width: 16px;
+        left: 3px;
+        bottom: 3px;
+        background-color: var(--text-muted);
+        transition: 0.4s;
+    }
+    input:checked + .slider {
+        background-color: rgba(16, 185, 129, 0.2);
+        border-color: rgba(16, 185, 129, 0.3);
+    }
+    input:checked + .slider:before {
+        transform: translateX(20px);
+        background-color: var(--success);
+    }
+    .slider.round {
+        border-radius: 24px;
+    }
+    .slider.round:before {
+        border-radius: 50%;
+    }
+
+    /* Utilities */
+    .fade-in {
+        animation: fadeIn 0.4s ease;
+    }
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    .d-none {
+        display: none !important;
+    }
+    .mb-2 {
+        margin-bottom: 0.5rem;
+    }
+    .mb-4 {
+        margin-bottom: 1.5rem;
+    }
+    .mb-5 {
+        margin-bottom: 2rem;
+    }
+    .me-1 {
+        margin-right: 0.25rem;
+    }
+    .me-2 {
+        margin-right: 0.5rem;
+    }
+    .mt-2 {
+        margin-top: 0.5rem;
+    }
+    .pt-3 {
+        padding-top: 1rem;
+    }
+    .py-5 {
+        padding-top: 3rem;
+        padding-bottom: 3rem;
+    }
+    .d-block {
+        display: block;
+    }
+    .w-100 {
+        width: 100%;
+    }
+    .text-center {
+        text-align: center;
+    }
+    .text-2xl {
+        font-size: 2rem;
+    }
+    .m-0 {
+        margin: 0;
+    }
+    .border-bottom {
+        border-bottom: 1px solid var(--card-border);
+    }
+    .border-top {
+        border-top: 1px solid var(--card-border);
+    }
+
+    @media (max-width: 900px) {
+        .dashboard-layout {
+            flex-direction: column;
+        }
+        .sidebar {
+            width: 100%;
+            padding: 20px;
+            border-bottom: 1px solid var(--card-border);
+        }
+        .brand {
+            margin-bottom: 24px;
+        }
+        .nav-menu {
+            flex-direction: row;
+            overflow-x: auto;
+        }
+        .nav-item {
+            white-space: nowrap;
+        }
+        .main-content {
+            padding: 24px;
+            height: auto;
+        }
+        .section-header {
+            flex-direction: column;
+            gap: 16px;
+            align-items: flex-start;
+        }
+    }
+</style>
+
+<script>
+    // Navigation Logic
+    const navItems = document.querySelectorAll(".nav-item");
+    const sections = document.querySelectorAll(".content-section");
+
+    navItems.forEach((item) => {
+        item.addEventListener("click", () => {
+            // Remove active classes
+            navItems.forEach((n) => n.classList.remove("active"));
+            sections.forEach((s) => s.classList.remove("active"));
+
+            // Add active class to clicked item & target section
+            item.classList.add("active");
+            const targetId = item.getAttribute("data-target");
+            if (targetId) {
+                const targetSection = document.getElementById(targetId);
+                if (targetSection) targetSection.classList.add("active");
+            }
+        });
+    });
+
+    // Logout
+    document
+        .getElementById("logoutBtn")
+        ?.addEventListener("click", async () => {
+            await fetch("/api/auth/logout", { method: "POST" });
+            window.location.href = "/admin/login";
+        });
+
+    // Generate Keys Configuration
+    document
+        .getElementById("generateKeysBtn")
+        ?.addEventListener("click", async () => {
+            if (!confirm("Buat 10 kunci akses acak baru?")) return;
+
+            try {
+                const btn = document.getElementById(
+                    "generateKeysBtn",
+                ) as HTMLButtonElement;
+                const originalHtml = btn.innerHTML;
+                btn.innerHTML =
+                    '<i class="bi bi-hourglass-split me-2"></i> Memproses...';
+                btn.disabled = true;
+
+                const res = await fetch("/api/keys", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ count: 10 }),
+                });
+
+                if (res.ok) {
+                    window.location.reload();
+                } else {
+                    alert("Gagal membuat kunci");
+                    btn.innerHTML = originalHtml;
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                alert("Terjadi kesalahan jaringan");
+            }
+        });
+
+    // Delete Keys
+    document.querySelectorAll(".btn-delete-key").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+            const el = e.currentTarget as HTMLElement;
+            const id = el.getAttribute("data-id");
+            if (!id || !confirm("Hapus kunci ini secara permanen?")) return;
+
+            el.innerHTML = '<i class="bi bi-hourglass"></i>';
+            el.setAttribute("disabled", "true");
+
+            try {
+                const res = await fetch("/api/keys", {
+                    method: "DELETE",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id }),
+                });
+                if (res.ok) {
+                    el.closest("tr")?.remove();
+                }
+            } catch (err) {
+                alert("Gagal menghapus kunci");
+                el.removeAttribute("disabled");
+                el.innerHTML = '<i class="bi bi-trash"></i>';
+            }
+        });
+    });
+
+    // Copy Credentials
+    document.querySelectorAll(".btn-copy").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+            const el = e.currentTarget as HTMLElement;
+            const user = el.getAttribute("data-user");
+            const pass = el.getAttribute("data-pass");
+
+            const text = `Username: ${user}\nPassword: ${pass}`;
+            navigator.clipboard.writeText(text);
+
+            const originalHtml = el.innerHTML;
+            el.innerHTML = '<i class="bi bi-check2"></i>';
+            el.classList.add("text-success");
+            el.classList.remove("text-primary");
+
+            setTimeout(() => {
+                el.innerHTML = originalHtml;
+                el.classList.remove("text-success");
+                el.classList.add("text-primary");
+            }, 1500);
+        });
+    });
+
+    // Modal Handling logic (Redirect Links)
+    const modal = document.getElementById("linkModal") as HTMLDivElement;
+    const linkForm = document.getElementById("linkForm") as HTMLFormElement;
+    const modalTitle = document.getElementById(
+        "modalTitle",
+    ) as HTMLHeadingElement;
+
+    // Close buttons
+    document.querySelectorAll(".close-modal").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            modal.classList.add("d-none");
+            linkForm.reset();
+        });
+    });
+
+    // Open Add Modal
+    document.getElementById("addServerBtn")?.addEventListener("click", () => {
+        linkForm.reset();
+        document.getElementById("linkId")?.removeAttribute("value");
+        modalTitle.textContent = "Tambah Tautan Server";
+
+        const targetEl = document.getElementById("targetUrlCopy");
+        if (targetEl) targetEl.textContent = window.location.origin + "/key";
+
+        modal.classList.remove("d-none");
+    });
+
+    // Edit Link logic
+    document.querySelectorAll(".btn-edit-link").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+            const el = e.currentTarget as HTMLElement;
+            const dataStr = el.getAttribute("data-link");
+            if (dataStr) {
+                const linkStr = JSON.parse(dataStr);
+                (document.getElementById("linkId") as HTMLInputElement).value =
+                    linkStr.id;
+                (
+                    document.getElementById("serverName") as HTMLInputElement
+                ).value = linkStr.server_name;
+                (document.getElementById("label") as HTMLInputElement).value =
+                    linkStr.label;
+                (
+                    document.getElementById("shortlinkUrl") as HTMLInputElement
+                ).value = linkStr.shortlink_url;
+                (
+                    document.getElementById("callbackUrl") as HTMLInputElement
+                ).value = linkStr.callback_url || "";
+
+                const targetEl = document.getElementById("targetUrlCopy");
+                if (targetEl)
+                    targetEl.textContent = window.location.origin + "/key";
+
+                modalTitle.textContent = "Edit Tautan Server";
+                modal.classList.remove("d-none");
+            }
+        });
+    });
+
+    // Form Submit for Shortlinks
+    linkForm?.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const formData = new FormData(linkForm);
+        const data = Object.fromEntries(formData);
+
+        const isEdit = !!data.id;
+        const method = isEdit ? "PUT" : "POST";
+
+        try {
+            const submitBtn = linkForm.querySelector(
+                'button[type="submit"]',
+            ) as HTMLButtonElement;
+            const originalText = submitBtn.textContent;
+            submitBtn.disabled = true;
+            submitBtn.innerHTML =
+                '<i class="bi bi-hourglass me-2"></i> Menyimpan...';
+
+            const res = await fetch("/api/redirect-links", {
+                method,
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+            });
+
+            if (res.ok) {
+                window.location.reload();
+            } else {
+                const err = await res.json();
+                alert("Error: " + (err.error || "Gagal menyimpan data"));
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
+            }
+        } catch (err) {
+            alert("Terjadi kesalahan jaringan");
+        }
+    });
+
+    // Delete Redirect Link
+    document.querySelectorAll(".btn-delete-link").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+            const el = e.currentTarget as HTMLElement;
+            const id = el.getAttribute("data-id");
+
+            if (!id || !confirm("Hapus konfigurasi server ini?")) return;
+
+            try {
+                const res = await fetch("/api/redirect-links", {
+                    method: "DELETE",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id }),
+                });
+
+                if (res.ok) {
+                    window.location.reload();
+                }
+            } catch (e) {
+                alert("Gagal menghapus tautan");
+            }
+        });
+    });
+
+    // Toggle Status API
+    document.querySelectorAll(".toggle-link-status").forEach((toggle) => {
+        toggle.addEventListener("change", async (e) => {
+            const el = e.target as HTMLInputElement;
+            const id = el.getAttribute("data-id");
+            const is_active = el.checked;
+
+            if (!id) return;
+
+            try {
+                await fetch("/api/redirect-links", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ id, is_active }),
+                });
+            } catch (e) {
+                // Revert on failure
+                el.checked = !is_active;
+                alert("Gagal memperbarui status");
+            }
+        });
+    });
+</script>
