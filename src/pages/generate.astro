@@ -58,6 +58,30 @@ try {
                 }
             </div>
 
+            <div class="vip-section mt-4 pt-4 border-top text-center">
+                <h4 class="instructions-title mb-4">
+                    Mau yang lebih simpel? Order VIP Key!
+                </h4>
+                <div class="d-flex justify-content-center gap-3">
+                    <a
+                        href="https://t.me/ZaynStoreRoom"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="btn-vip btn-tele"
+                    >
+                        <i class="bi bi-telegram"></i> Telegram
+                    </a>
+                    <a
+                        href="https://wa.me/62895401426305"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        class="btn-vip btn-wa"
+                    >
+                        <i class="bi bi-whatsapp"></i> WhatsApp
+                    </a>
+                </div>
+            </div>
+
             <div class="instructions mt-4 pt-4 border-top">
                 <h4 class="instructions-title">
                     <i class="bi bi-journal-text me-2"></i> Cara Kerja:
@@ -238,6 +262,59 @@ try {
         font-weight: 600;
         margin-bottom: 12px;
         color: var(--text-main);
+    }
+
+    .vip-section {
+        margin-top: 2rem;
+    }
+
+    .d-flex {
+        display: flex;
+    }
+    .justify-content-center {
+        justify-content: center;
+    }
+    .gap-3 {
+        gap: 1rem;
+    }
+    .mb-3 {
+        margin-bottom: 1rem;
+    }
+
+    .btn-vip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 24px;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 0.95rem;
+        text-decoration: none;
+        transition: all 0.25s ease;
+    }
+
+    .btn-tele {
+        background: rgba(0, 136, 204, 0.1);
+        border: 1px solid rgba(0, 136, 204, 0.2);
+        color: #0088cc;
+    }
+
+    .btn-tele:hover {
+        background: #0088cc;
+        color: white;
+        transform: translateY(-2px);
+    }
+
+    .btn-wa {
+        background: rgba(37, 211, 102, 0.1);
+        border: 1px solid rgba(37, 211, 102, 0.2);
+        color: #25d366;
+    }
+
+    .btn-wa:hover {
+        background: #25d366;
+        color: white;
+        transform: translateY(-2px);
     }
 
     .steps-list {
